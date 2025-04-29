@@ -5,7 +5,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from database.operations import get_or_create_user, create_chat, add_message, get_chat_messages, get_chat_stats, get_prompt_by_id
 from services.openai_service import send_message_to_openai
-from services.token_counter import format_stats
+from services.token_counter import calculate_cost, format_stats
 from keyboards.keyboards import chat_keyboard, models_keyboard, main_menu_keyboard
 
 router = Router()
@@ -112,7 +112,7 @@ async def process_message(message: Message, state: FSMContext):
     
     # Добавляем сообщение пользователя в БД
     from services.token_counter import get_token_count
-    user_tokens = get_token_count(message.text, model)  # Точная оценка токенов
+    user_tokens = get_token_count(message.text, model)  # Более точная оценка
     user_cost = user_tokens * (data.get("model_rate_input", 0) / 1_000_000)
     add_message(chat_id, "user", message.text, int(user_tokens), user_cost)
     
@@ -128,6 +128,37 @@ async def process_message(message: Message, state: FSMContext):
     )
     
     if response["success"]:
+        # ВОТ ГДЕ ПРОБЛЕМА! Нам нужно обновить предыдущую запись о токенах пользователя
+        # с фактическими данными, которые пришли от API
+        from database.models import Session, Message, Chat
+        session = Session()
+        # Получаем последнее сообщение пользователя и обновляем его токены
+        last_user_message = session.query(Message).filter(
+            Message.chat_id == chat_id, 
+            Message.role == "user"
+        ).order_by(Message.id.desc()).first()
+        if last_user_message:
+            # Вычисляем разницу между оценкой и реальным количеством
+            tokens_diff = response["input_tokens"] - last_user_message.tokens
+            cost_diff = calculate_cost(tokens_diff, model, True)
+            
+            # Обновляем запись сообщения
+            last_user_message.tokens = response["input_tokens"]
+            last_user_message.cost_usd = calculate_cost(response["input_tokens"], model, True)
+            
+            # Обновляем статистику чата
+            chat = session.query(Chat).filter(Chat.id == chat_id).one()
+            chat.tokens_input += tokens_diff
+            chat.cost_usd += cost_diff
+            
+            # Обновляем статистику пользователя
+            user = chat.user
+            user.total_tokens_input += tokens_diff
+            user.total_cost_usd += cost_diff
+            
+            session.commit()
+        session.close()
+        
         # Добавляем ответ ассистента в БД
         add_message(
             chat_id,
