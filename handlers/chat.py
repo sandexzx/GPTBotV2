@@ -11,6 +11,7 @@ from services.token_counter import calculate_cost, format_stats
 from services.queue_manager import queue_manager
 from keyboards.keyboards import chat_keyboard, models_keyboard, main_menu_keyboard
 from config import MAIN_ADMIN_ID
+from user_mapping import get_user_name
 
 router = Router()
 
@@ -142,9 +143,10 @@ async def process_message(message: Message, state: FSMContext):
 
         # Отправляем уведомление главному админу
         if request['user_id'] != MAIN_ADMIN_ID:
+            user_name = get_user_name(request['user_id']) or f"ID: {request['user_id']}"
             admin_notification = (
                 f"🆕 Новый запрос от пользователя:\n"
-                f"👤 ID: {request['user_id']}\n"
+                f"👤 {user_name}\n"
                 f"📝 Текст: {request['message'].text}\n"
                 f"🤖 Модель: {current_model}"
             )
