@@ -125,7 +125,8 @@ async def process_message(message: Message, state: FSMContext):
         model=model,
         input_text=message.text,
         messages=chat_messages,
-        system_instruction=system_instruction
+        system_instruction=system_instruction,
+        max_tokens=data.get("max_tokens", None)  # Берем из состояния, если указано
     )
     
     if response["success"]:
@@ -237,3 +238,19 @@ async def send_chunked_message(message: Message, text: str, reply_markup=None, p
     
     # Последнюю часть отправляем с клавиатурой
     return await message.answer(chunks[-1], reply_markup=reply_markup, parse_mode=parse_mode)
+
+@router.callback_query(F.data.startswith("set_max_tokens:"))
+async def set_max_tokens(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора максимального количества токенов"""
+    max_tokens = int(callback.data.split(":")[1])
+    
+    # Сохраняем выбранное значение в состоянии
+    await state.update_data(max_tokens=max_tokens)
+    
+    await callback.message.edit_text(
+        f"✅ Установлен лимит в {max_tokens} токенов для ответа.\n\n"
+        "Теперь выберите модель для чата:",
+        reply_markup=models_keyboard()
+    )
+    
+    await callback.answer()

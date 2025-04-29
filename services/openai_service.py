@@ -4,7 +4,7 @@ from typing import Dict, Any, List, Optional
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 load_dotenv()  # Загружаем переменные окружения из .env
-from config import OPENAI_API_KEY
+from config import OPENAI_API_KEY, DEFAULT_MAX_TOKENS
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY не установлен. Убедитесь, что файл .env создан и содержит правильный API ключ.")
 from .token_counter import get_token_count, calculate_cost
@@ -18,12 +18,17 @@ async def send_message_to_openai(
     model: str, 
     input_text: str, 
     messages: List[Dict[str, str]] = None,
-    system_instruction: Optional[str] = None
+    system_instruction: Optional[str] = None,
+    max_tokens: Optional[int] = None
 ) -> Dict[str, Any]:
     """Отправить сообщение в OpenAI API и получить ответ"""
 
     # Инициализируем клиент здесь, чтобы быть уверенными, что переменные окружения загружены
     client = AsyncOpenAI(api_key=OPENAI_API_KEY, timeout=30.0)
+
+    # Если max_tokens не указан, используем значение по умолчанию из конфига
+    if max_tokens is None:
+        max_tokens = DEFAULT_MAX_TOKENS
     
     # Если нет истории сообщений, создаем новую
     if messages is None:
@@ -68,7 +73,7 @@ async def send_message_to_openai(
             response = await client.chat.completions.create(
                 model=model,
                 messages=api_messages,
-                max_tokens=4000
+                max_tokens=max_tokens
             )
             end_time = datetime.now()
             elapsed = (end_time - start_time).total_seconds()

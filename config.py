@@ -9,6 +9,9 @@ load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
+# Максимальное количество токенов в ответе модели
+DEFAULT_MAX_TOKENS = 4000
+
 # Админы бота (только они могут использовать)
 ADMIN_IDS = [165879072, 5237388776, 415595998]  # Замени своими ID
 

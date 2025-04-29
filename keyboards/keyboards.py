@@ -27,6 +27,27 @@ def models_keyboard() -> InlineKeyboardMarkup:
         output_price_rub = output_price * USD_TO_RUB
         btn_text = f"{model_name} • ⤵️ {input_price_rub:.1f}₽/М • ⤴️ {output_price_rub:.1f}₽/М"
         buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"model:{model_name}")])
+
+    # Добавляем кнопки для настройки максимального количества токенов
+    tokens_options = [4000, 8000, 12000, 16000]
+    tokens_buttons = []
+    for tokens in tokens_options:
+        tokens_buttons.append(InlineKeyboardButton(
+            text=f"🔢 {tokens} токенов", 
+            callback_data=f"set_max_tokens:{tokens}"
+        ))
+    
+    # Группируем кнопки токенов по 2 в ряд
+    for i in range(0, len(tokens_options), 2):
+        row = []
+        for j in range(2):
+            if i + j < len(tokens_options):
+                tokens = tokens_options[i + j]
+                row.append(InlineKeyboardButton(
+                    text=f"🔢 {tokens} токенов", 
+                    callback_data=f"set_max_tokens:{tokens}"
+                ))
+        buttons.append(row)
     
     buttons.append([InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_main")])
     keyboard = InlineKeyboardMarkup(inline_keyboard=buttons)
