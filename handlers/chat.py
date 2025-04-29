@@ -4,6 +4,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums.parse_mode import ParseMode
 import logging
+import time
 
 from database.operations import get_or_create_user, create_chat, add_message, get_chat_messages, get_chat_stats, get_prompt_by_id
 from services.openai_service import send_message_to_openai
@@ -33,6 +34,7 @@ async def select_model(callback: CallbackQuery, state: FSMContext):
     # Проверяем, есть ли выбранный промпт
     data = await state.get_data()
     selected_prompt_id = data.get("selected_prompt_id")
+    max_tokens = data.get("max_tokens", 4000)  # Получаем выбранное количество токенов или используем значение по умолчанию
 
     print(f"Выбор модели {model}, выбранный промпт ID: {selected_prompt_id}")
     
@@ -76,6 +78,7 @@ async def select_model(callback: CallbackQuery, state: FSMContext):
     if selected_prompt_id:
         prompt = get_prompt_by_id(selected_prompt_id)
         message_text += f"\n\n🔮 Промпт \"{prompt.name}\" применён к чату."
+    message_text += f"\n\n🔢 Лимит выходных токенов: {max_tokens}"
     message_text += "\n\nОтправь сообщение, и я передам его модели."
     
     await callback.message.edit_text(
@@ -179,6 +182,11 @@ async def process_message(message: Message, state: FSMContext):
                 full_response = ""
                 output_tokens = 0
                 last_update_length = 0
+                use_file = False  # Флаг для переключения на отправку файлом
+                last_update_time = 0  # Время последнего обновления
+                update_interval = 1.0  # Уменьшаем интервал обновления
+                min_length_for_streaming = 50  # Минимальная длина для начала стриминга
+                initial_streaming_delay = 0.5  # Задержка перед первым обновлением для коротких ответов
 
                 # Обрабатываем стрим
                 async for chunk in response["stream"]:
@@ -187,24 +195,62 @@ async def process_message(message: Message, state: FSMContext):
                         full_response += content
                         output_tokens += 1  # Примерная оценка токенов
 
-                        # Отправляем обновление каждые 50 символов или если это последний чанк
-                        if len(full_response) - last_update_length >= 50 or not chunk.choices[0].finish_reason is None:
+                        current_time = time.time()
+                        
+                        # Для коротких ответов используем меньшую задержку
+                        if len(full_response) < min_length_for_streaming:
+                            if current_time - last_update_time >= initial_streaming_delay:
+                                try:
+                                    # Проверяем, что текст не пустой
+                                    if full_response.strip():
+                                        await bot_message.edit_text(full_response)
+                                        last_update_time = current_time
+                                    else:
+                                        # Если текст пустой, просто пропускаем обновление
+                                        continue
+                                except Exception as e:
+                                    logging.warning(f"Ошибка при обновлении короткого сообщения: {str(e)}")
+                            continue
+
+                        # Если сообщение стало слишком длинным, переключаемся на файл
+                        if len(full_response) > 4000:  # Увеличиваем порог для переключения на файл
+                            use_file = True
+                            await bot_message.edit_text("📄 Ответ слишком длинный, отправляю файлом...")
+                            continue
+
+                        # Если используем файл, пропускаем обновления
+                        if use_file:
+                            continue
+
+                        # Отправляем обновление только если прошло достаточно времени
+                        if current_time - last_update_time >= update_interval:
                             try:
                                 await bot_message.edit_text(full_response)
                                 last_update_length = len(full_response)
+                                last_update_time = current_time
                             except Exception as e:
-                                # Если возникла ошибка при редактировании (например, пустое сообщение),
-                                # просто пропускаем это обновление
-                                logging.warning(f"Не удалось обновить сообщение: {str(e)}")
+                                if "Flood control" in str(e):
+                                    # При ошибке flood control увеличиваем интервал
+                                    update_interval = min(update_interval * 1.5, 5.0)
+                                    logging.warning(f"Flood control detected, increasing interval to {update_interval}")
+                                else:
+                                    # При других ошибках переключаемся на файл
+                                    use_file = True
+                                    await bot_message.edit_text("📄 Ответ слишком длинный, отправляю файлом...")
+                                    logging.warning(f"Ошибка при обновлении сообщения: {str(e)}")
 
-                # Обновляем финальный текст, если он не пустой
-                if full_response.strip():
-                    try:
-                        await bot_message.edit_text(full_response)
-                    except Exception as e:
-                        logging.error(f"Не удалось обновить финальное сообщение: {str(e)}")
-                        # Если не удалось отредактировать, отправляем новое сообщение
-                        await request['message'].answer(full_response)
+                # Если использовали файл, отправляем его
+                if use_file:
+                    await send_chunked_message(request['message'], full_response, reply_markup=chat_keyboard())
+                else:
+                    # Обновляем финальный текст, если он не пустой
+                    if full_response.strip():
+                        try:
+                            await bot_message.edit_text(full_response)
+                        except Exception as e:
+                            logging.error(f"Не удалось обновить финальное сообщение: {str(e)}")
+                            # Если не удалось отредактировать, отправляем новое сообщение
+                            await request['message'].answer(full_response)
 
                 # Добавляем ответ ассистента в БД
                 output_cost = calculate_cost(output_tokens, current_model, is_input=False)
@@ -296,7 +342,6 @@ async def send_chunked_message(message: Message, text: str, reply_markup=None, p
         return await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
     
     # Если текст длиннее, отправляем его как файл
-    # Создаем временный файл
     import tempfile
     import os
     from datetime import datetime
@@ -306,12 +351,17 @@ async def send_chunked_message(message: Message, text: str, reply_markup=None, p
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     filename = f"response_{timestamp}.txt"
     
-    # Создаем временный файл
-    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding='utf-8') as temp_file:
-        temp_file.write(text)
-        temp_file_path = temp_file.name
-    
     try:
+        # Создаем временный файл с сохранением форматирования
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding='utf-8') as temp_file:
+            # Добавляем заголовок с информацией о времени
+            temp_file.write(f"Ответ сгенерирован: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            temp_file.write("=" * 50 + "\n\n")
+            
+            # Записываем сам текст
+            temp_file.write(text)
+            temp_file_path = temp_file.name
+        
         # Отправляем файл
         input_file = FSInputFile(temp_file_path, filename=filename)
         await message.answer_document(
@@ -319,9 +369,30 @@ async def send_chunked_message(message: Message, text: str, reply_markup=None, p
             caption="📄 Ответ слишком длинный, отправляю файлом",
             reply_markup=reply_markup
         )
+    except Exception as e:
+        logging.error(f"Ошибка при отправке файла: {str(e)}")
+        # В случае ошибки пытаемся отправить текст частями
+        try:
+            chunks = [text[i:i+MAX_LENGTH] for i in range(0, len(text), MAX_LENGTH)]
+            for i, chunk in enumerate(chunks, 1):
+                await message.answer(
+                    f"Часть {i}/{len(chunks)}:\n\n{chunk}",
+                    reply_markup=reply_markup if i == len(chunks) else None,
+                    parse_mode=parse_mode
+                )
+        except Exception as e:
+            logging.error(f"Ошибка при отправке текста частями: {str(e)}")
+            await message.answer(
+                "❌ Произошла ошибка при отправке ответа. Пожалуйста, попробуйте позже.",
+                reply_markup=reply_markup
+            )
     finally:
         # Удаляем временный файл
-        os.unlink(temp_file_path)
+        try:
+            if 'temp_file_path' in locals():
+                os.unlink(temp_file_path)
+        except Exception as e:
+            logging.warning(f"Не удалось удалить временный файл: {str(e)}")
 
 @router.callback_query(F.data.startswith("set_max_tokens:"))
 async def set_max_tokens(callback: CallbackQuery, state: FSMContext):
