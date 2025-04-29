@@ -2,6 +2,7 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.enums.parse_mode import ParseMode
 
 from database.operations import get_or_create_user, create_chat, add_message, get_chat_messages, get_chat_stats, get_prompt_by_id
 from services.openai_service import send_message_to_openai
@@ -162,7 +163,10 @@ async def process_message(message: Message, state: FSMContext):
         # Отправляем ответ с статистикой
         # Сначала отправляем ответ модели
         # Отправляем ответ модели частями при необходимости
-        await send_chunked_message(message, response['output_text'])
+        # Проверяем, есть ли маркеры Markdown в тексте
+        contains_markdown = any(marker in response['output_text'] for marker in ['```', '**', '__', '*', '_', '`'])
+        parse_mode = ParseMode.MARKDOWN if contains_markdown else ParseMode.HTML
+        await send_chunked_message(message, response['output_text'], parse_mode=parse_mode)
         
         # Затем отправляем статистику отдельным сообщением
         await message.answer(
@@ -215,12 +219,12 @@ async def use_prompt_in_chat(callback: CallbackQuery, state: FSMContext):
     
     await callback.answer()
 
-async def send_chunked_message(message: Message, text: str, reply_markup=None):
+async def send_chunked_message(message: Message, text: str, reply_markup=None, parse_mode=None):
     """Отправляет длинный текст частями, если он превышает лимит Telegram"""
     MAX_LENGTH = 4096  # Максимальная длина сообщения в Telegram
     
     if len(text) <= MAX_LENGTH:
-        return await message.answer(text, reply_markup=reply_markup)
+        return await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
         
     # Разбиваем на части
     chunks = []
@@ -229,7 +233,7 @@ async def send_chunked_message(message: Message, text: str, reply_markup=None):
     
     # Отправляем все части кроме последней
     for chunk in chunks[:-1]:
-        await message.answer(chunk)
+        await message.answer(chunk, parse_mode=parse_mode)
     
     # Последнюю часть отправляем с клавиатурой
-    return await message.answer(chunks[-1], reply_markup=reply_markup)
+    return await message.answer(chunks[-1], reply_markup=reply_markup, parse_mode=parse_mode)

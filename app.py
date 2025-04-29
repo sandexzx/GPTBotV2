@@ -40,7 +40,7 @@ async def main():
 
     # Инициализация бота и диспетчера
     from aiogram.client.default import DefaultBotProperties
-    bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    bot = Bot(token=TOKEN) 
     storage = MemoryStorage()
     dp = Dispatcher(storage=storage)
     
