@@ -16,6 +16,7 @@ router = Router()
 class ChatStates(StatesGroup):
     waiting_for_message = State()
     using_prompt = State()
+    waiting_for_file = State()  # Новое состояние для ожидания файла
 
 
 @router.callback_query(F.data.startswith("model:"))
@@ -315,3 +316,66 @@ async def set_max_tokens(callback: CallbackQuery, state: FSMContext):
     )
     
     await callback.answer()
+
+@router.callback_query(F.data == "load_prompt_file")
+async def load_prompt_file(callback: CallbackQuery, state: FSMContext):
+    """Обработка запроса на загрузку файла с промптом"""
+    await callback.message.edit_text(
+        "📂 Отправьте текстовый файл (.txt) с промптом.\n\n"
+        "Файл должен содержать текст промпта, который будет использоваться для чата.",
+        reply_markup=chat_keyboard()
+    )
+    await state.set_state(ChatStates.waiting_for_file)
+    await callback.answer()
+
+@router.message(ChatStates.waiting_for_file, F.document)
+async def process_prompt_file(message: Message, state: FSMContext):
+    """Обработка загруженного файла с промптом"""
+    # Проверяем, что файл имеет расширение .txt
+    if not message.document.file_name.endswith('.txt'):
+        await message.answer(
+            "❌ Ошибка: Файл должен иметь расширение .txt\n"
+            "Пожалуйста, отправьте текстовый файл.",
+            reply_markup=chat_keyboard()
+        )
+        return
+
+    try:
+        # Получаем файл
+        file = await message.bot.get_file(message.document.file_id)
+        file_path = file.file_path
+        
+        # Скачиваем файл
+        file_content = await message.bot.download_file(file_path)
+        prompt_text = file_content.read().decode('utf-8')
+        
+        # Сохраняем промпт в состоянии
+        await state.update_data(system_instruction=prompt_text)
+        
+        # Получаем данные о модели
+        data = await state.get_data()
+        model = data.get("model")
+        
+        if model:
+            # Если модель уже выбрана, сразу начинаем чат
+            await message.answer(
+                "✅ Промпт успешно загружен!\n\n"
+                "Отправьте сообщение, и я передам его модели.",
+                reply_markup=chat_keyboard()
+            )
+            await state.set_state(ChatStates.waiting_for_message)
+        else:
+            # Если модель не выбрана, предлагаем выбрать
+            await message.answer(
+                "✅ Промпт успешно загружен!\n\n"
+                "Теперь выберите модель для чата:",
+                reply_markup=models_keyboard()
+            )
+            
+    except Exception as e:
+        await message.answer(
+            f"❌ Ошибка при обработке файла: {str(e)}\n"
+            "Пожалуйста, попробуйте еще раз.",
+            reply_markup=chat_keyboard()
+        )
+        await state.set_state(ChatStates.waiting_for_file)

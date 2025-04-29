@@ -10,6 +10,7 @@ def main_menu_keyboard() -> InlineKeyboardMarkup:
         inline_keyboard=[
             [InlineKeyboardButton(text="💬 Начать чат с AI", callback_data="new_chat")],
             [InlineKeyboardButton(text="📄 Мои промпты", callback_data="prompts")],
+            [InlineKeyboardButton(text="📂 Загрузить промпт из файла", callback_data="load_prompt_file")],
             [InlineKeyboardButton(text="ℹ️ О боте", callback_data="about")]
         ]
     )
