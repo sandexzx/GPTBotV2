@@ -2,3 +2,4 @@ aiogram
 openai
 sqlalchemy
 tiktoken
+dotenv
