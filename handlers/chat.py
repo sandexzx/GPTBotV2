@@ -3,7 +3,7 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
-from database.operations import get_or_create_user, create_chat, add_message, get_chat_messages, get_chat_stats
+from database.operations import get_or_create_user, create_chat, add_message, get_chat_messages, get_chat_stats, get_prompt_by_id
 from services.openai_service import send_message_to_openai
 from services.token_counter import format_stats
 from keyboards.keyboards import chat_keyboard, models_keyboard, main_menu_keyboard
@@ -24,6 +24,13 @@ async def select_model(callback: CallbackQuery, state: FSMContext):
     # Сохраняем выбранную модель в состоянии
     await state.update_data(model=model)
 
+     # Проверяем, есть ли выбранный промпт
+    data = await state.get_data()
+    selected_prompt_id = data.get("selected_prompt_id")
+    if selected_prompt_id:
+        await state.update_data(system_instruction=get_prompt_by_id(selected_prompt_id).content)
+
+
     # Добавляем ставки модели в состояние
     from config import MODELS
     model_rates = MODELS.get(model, {"input": 0, "output": 0})
@@ -43,11 +50,18 @@ async def select_model(callback: CallbackQuery, state: FSMContext):
     
     # Сохраняем ID чата в состоянии
     await state.update_data(chat_id=chat_id)
+
+    # Сообщение о начале чата
+    message_text = f"Чат с моделью {model} начат!"
+    if selected_prompt_id:
+        prompt = get_prompt_by_id(selected_prompt_id)
+        message_text += f"\n\n🔮 Промпт \"{prompt.name}\" применён к чату."
+    message_text += "\n\nОтправь сообщение, и я передам его модели."
+    
     
     await callback.message.edit_text(
-        f"Чат с моделью {model} начат!\n\n"
-        f"Отправь сообщение, и я передам его модели.",
-        reply_markup=chat_keyboard()
+        message_text,
+        reply_markup=chat_keyboard() 
     )
     
     await state.set_state(ChatStates.waiting_for_message)

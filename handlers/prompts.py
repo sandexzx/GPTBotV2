@@ -6,7 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from database.operations import get_or_create_user, get_user_prompts, save_prompt, delete_prompt
 from handlers.chat import ChatStates
-from keyboards.keyboards import prompts_keyboard, prompt_actions_keyboard, main_menu_keyboard
+from keyboards.keyboards import models_keyboard, prompts_keyboard, prompt_actions_keyboard, main_menu_keyboard
 
 router = Router()
 
@@ -151,10 +151,13 @@ async def redirect_use_prompt(callback: CallbackQuery, state: FSMContext):
         # Ничего делать не нужно, обработчик в chat.py сработает
         return
     else:
-        # Если не в чате, сообщаем что нужно сначала начать чат
+        # Сохраняем ID промпта в состоянии для будущего использования
+        prompt_id = int(callback.data.split(":")[1])
+        await state.update_data(selected_prompt_id=prompt_id)
+        # Если не в чате, перенаправляем на выбор модели
         await callback.message.edit_text(
-            "Сначала нужно начать чат, чтобы использовать промпт!",
-            reply_markup=main_menu_keyboard()
+             "Выбери модель для нового чата с этим промптом:",
+             reply_markup=models_keyboard()
         )
     
     await callback.answer()
