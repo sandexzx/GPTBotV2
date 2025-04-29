@@ -1,7 +1,7 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
 from typing import List, Dict
 
-from config import MODELS
+from config import MODELS, USD_TO_RUB
 
 
 def main_menu_keyboard() -> InlineKeyboardMarkup:
@@ -23,7 +23,9 @@ def models_keyboard() -> InlineKeyboardMarkup:
     for model_name, prices in MODELS.items():
         input_price = prices["input"]
         output_price = prices["output"]
-        btn_text = f"{model_name} - Input: ${input_price}/M, Output: ${output_price}/M"
+        input_price_rub = input_price * USD_TO_RUB
+        output_price_rub = output_price * USD_TO_RUB
+        btn_text = f"{model_name} • ⤵️ {input_price_rub:.1f}₽/М • ⤴️ {output_price_rub:.1f}₽/М"
         buttons.append([InlineKeyboardButton(text=btn_text, callback_data=f"model:{model_name}")])
     
     buttons.append([InlineKeyboardButton(text="↩️ Назад", callback_data="back_to_main")])

@@ -26,28 +26,28 @@ def calculate_cost(tokens: int, model: str, is_input: bool = True) -> float:
 
 
 def format_stats(tokens_input: int, tokens_output: int, 
-                model: str, total_input: int = 0, total_output: int = 0) -> str:
+               model: str, total_input: int = 0, total_output: int = 0) -> str:
     """Форматировать статистику для отображения пользователю"""
     
-    # Текущий запрос/ответ
+    # Расчет стоимости в рублях (без долларов)
     cost_input_usd = calculate_cost(tokens_input, model, True)
     cost_output_usd = calculate_cost(tokens_output, model, False)
     
     cost_input_rub = cost_input_usd * USD_TO_RUB
     cost_output_rub = cost_output_usd * USD_TO_RUB
+    total_cost_rub = cost_input_rub + cost_output_rub
     
-    # Текущий чат (всего)
+    # Стоимость всего чата в рублях
     total_cost_input_usd = calculate_cost(total_input, model, True)
     total_cost_output_usd = calculate_cost(total_output, model, False)
     
     total_cost_input_rub = total_cost_input_usd * USD_TO_RUB
     total_cost_output_rub = total_cost_output_usd * USD_TO_RUB
+    chat_total_cost_rub = total_cost_input_rub + total_cost_output_rub
     
     stats = (
-        f"\nТекущий запрос/ответ: {tokens_input} (${cost_input_usd:.6f}/{cost_input_rub:.2f}₽)/"
-        f"{tokens_output} (${cost_output_usd:.6f}/{cost_output_rub:.2f}₽) токенов.\n"
-        f"Текущий чат запрос/ответ: {total_input} (${total_cost_input_usd:.6f}/{total_cost_input_rub:.2f}₽)/"
-        f"{total_output} (${total_cost_output_usd:.6f}/{total_cost_output_rub:.2f}₽) токенов."
+        f"\n\n📊 Текущий запрос: {tokens_input + tokens_output} токенов ({tokens_input}⤵️/{tokens_output}⤴️) • {total_cost_rub:.2f}₽"
+        f"\n💰 Весь чат: {total_input + total_output} токенов • {chat_total_cost_rub:.2f}₽"
     )
     
     return stats

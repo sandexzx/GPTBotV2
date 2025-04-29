@@ -24,9 +24,9 @@ async def admin_command(message: Message):
         total_cost_rub = user["total_cost_usd"] * USD_TO_RUB
         users_text += (
             f"ID: {user['tg_id']}, @{user['username'] or 'Unknown'}\n"
-            f"Чатов: {user['chats_count']}\n"
-            f"Токенов (вход/выход): {user['total_tokens_input']}/{user['total_tokens_output']}\n"
-            f"Стоимость: ${user['total_cost_usd']:.4f} / {total_cost_rub:.2f}₽\n\n"
+            f"🗣️ Чатов: {user['chats_count']}\n"
+            f"📝 Токенов: {user['total_tokens_input'] + user['total_tokens_output']} ({user['total_tokens_input']}⤵️/{user['total_tokens_output']}⤴️)\n"
+            f"💰 Стоимость: {total_cost_rub:.2f}₽\n\n"
         )
     
     # Форматируем статистику по моделям
@@ -35,9 +35,9 @@ async def admin_command(message: Message):
         total_cost_rub = model_data["cost_usd"] * USD_TO_RUB
         models_text += (
             f"Модель: {model_name}\n"
-            f"Чатов: {model_data['chats_count']}\n"
-            f"Токенов (вход/выход): {model_data['tokens_input']}/{model_data['tokens_output']}\n"
-            f"Стоимость: ${model_data['cost_usd']:.4f} / {total_cost_rub:.2f}₽\n\n"
+            f"🗣️ Чатов: {model_data['chats_count']}\n"
+            f"📝 Токенов: {model_data['tokens_input'] + model_data['tokens_output']} ({model_data['tokens_input']}⤵️/{model_data['tokens_output']}⤴️)\n"
+            f"💰 Стоимость: {total_cost_rub:.2f}₽\n\n"
         )
     
     # Отправляем статистику
