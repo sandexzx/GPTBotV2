@@ -1,5 +1,9 @@
 import os
 from typing import Dict, List
+from dotenv import load_dotenv
+
+# Загружаем переменные окружения из .env файла
+load_dotenv()
 
 # Константы бота
 TOKEN = os.getenv("BOT_TOKEN")

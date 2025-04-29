@@ -1,13 +1,13 @@
 import json
 from typing import Dict, Any, List, Optional
 from openai import AsyncOpenAI
+from dotenv import load_dotenv
+load_dotenv()  # Загружаем переменные окружения из .env
 from config import OPENAI_API_KEY
+if not OPENAI_API_KEY:
+    raise ValueError("OPENAI_API_KEY не установлен. Убедитесь, что файл .env создан и содержит правильный API ключ.")
 from .token_counter import get_token_count, calculate_cost
 import asyncio
-
-
-client = AsyncOpenAI(api_key=OPENAI_API_KEY, timeout=30.0)
-
 
 async def send_message_to_openai(
     model: str, 
@@ -17,6 +17,9 @@ async def send_message_to_openai(
 ) -> Dict[str, Any]:
     """Отправить сообщение в OpenAI API и получить ответ"""
     import logging
+
+    # Инициализируем клиент здесь, чтобы быть уверенными, что переменные окружения загружены
+    client = AsyncOpenAI(api_key=OPENAI_API_KEY, timeout=30.0)
     
     # Если нет истории сообщений, создаем новую
     if messages is None:
