@@ -223,14 +223,66 @@ async def use_prompt_in_chat(callback: CallbackQuery, state: FSMContext):
 async def send_chunked_message(message: Message, text: str, reply_markup=None, parse_mode=None):
     """Отправляет длинный текст частями, если он превышает лимит Telegram"""
     MAX_LENGTH = 4096  # Максимальная длина сообщения в Telegram
+
+    # Проверяем безопасность разделения для Markdown
+    def is_safe_split_for_markdown(text, position):
+        # Проверяем, что мы не разрываем пары форматирования
+        pairs = ["```", "**", "*", "__", "_", "`"]
+        
+        # Проверяем каждую пару маркеров
+        for pair in pairs:
+            # Считаем количество маркеров до позиции разделения
+            count_before = text[:position].count(pair)
+            
+            # Если количество нечетное - значит, разделяем в середине форматирования
+            if count_before % 2 != 0:
+                return False
+        
+        return True
     
+    # Если текст короче максимальной длины, просто отправляем его
     if len(text) <= MAX_LENGTH:
         return await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
         
-    # Разбиваем на части
-    chunks = []
-    for i in range(0, len(text), MAX_LENGTH):
-        chunks.append(text[i:i + MAX_LENGTH])
+     
+    # Если используется Markdown, нужно быть осторожным с разделением
+    if parse_mode == ParseMode.MARKDOWN:
+        # Маркеры, которые должны быть закрыты в том же чанке
+        markdown_markers = ['```', '**', '__', '*', '_', '`']
+        chunks = []
+        start_idx = 0
+        
+        while start_idx < len(text):
+            end_idx = min(start_idx + MAX_LENGTH, len(text))
+            if end_idx < len(text):
+                # Находим безопасную точку для разделения текста
+                # Идем назад от конца чанка, пока не найдем перенос строки
+                safe_end = end_idx
+                while safe_end > start_idx + MAX_LENGTH // 2:
+                    if text[safe_end] == '\n':
+                        break
+                    safe_end -= 1
+                
+                # Если не нашли подходящий перенос строки, используем исходный конец
+                if safe_end <= start_idx + MAX_LENGTH // 2:
+                    safe_end = end_idx
+                
+                end_idx = safe_end
+                
+            # Добавляем чанк
+            chunks.append(text[start_idx:end_idx])
+            start_idx = end_idx
+            
+        # Хак: если в тексте есть незакрытые маркеры, лучше отправить без парсинга
+        for marker in markdown_markers:
+            if text.count(marker) % 2 != 0:
+                parse_mode = None
+                break
+    else:
+        # Разбиваем на части
+        chunks = []
+        for i in range(0, len(text), MAX_LENGTH):
+            chunks.append(text[i:i + MAX_LENGTH])
     
     # Отправляем все части кроме последней
     for chunk in chunks[:-1]:
