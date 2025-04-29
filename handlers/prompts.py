@@ -20,12 +20,12 @@ class PromptStates(StatesGroup):
 @router.callback_query(F.data == "prompts")
 async def show_prompts(callback: CallbackQuery, state: FSMContext):
     """Показать список промптов пользователя"""
-    user = get_or_create_user(
+    user_id = get_or_create_user(
         callback.from_user.id, 
         callback.from_user.username
     )
     
-    prompts = get_user_prompts(user.id)
+    prompts = get_user_prompts(user_id)
     
     if not prompts:
         await callback.message.edit_text(
@@ -74,10 +74,10 @@ async def process_prompt_content(message: Message, state: FSMContext):
     data = await state.get_data()
     prompt_name = data.get("prompt_name")
     
-    user = get_or_create_user(message.from_user.id, message.from_user.username)
+    user_id = get_or_create_user(message.from_user.id, message.from_user.username)
     
     # Сохраняем промпт
-    prompt = save_prompt(user.id, prompt_name, message.text)
+    prompt = save_prompt(user_id, prompt_name, message.text)
     
     await message.answer(
         f"✅ Промпт \"{prompt_name}\" успешно сохранен!\n\n"
