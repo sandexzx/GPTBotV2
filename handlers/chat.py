@@ -234,72 +234,37 @@ async def send_chunked_message(message: Message, text: str, reply_markup=None, p
     """Отправляет длинный текст частями, если он превышает лимит Telegram"""
     MAX_LENGTH = 4096  # Максимальная длина сообщения в Telegram
 
-    # Проверяем безопасность разделения для Markdown
-    def is_safe_split_for_markdown(text, position):
-        # Проверяем, что мы не разрываем пары форматирования
-        pairs = ["```", "**", "*", "__", "_", "`"]
-        
-        # Проверяем каждую пару маркеров
-        for pair in pairs:
-            # Считаем количество маркеров до позиции разделения
-            count_before = text[:position].count(pair)
-            
-            # Если количество нечетное - значит, разделяем в середине форматирования
-            if count_before % 2 != 0:
-                return False
-        
-        return True
-    
     # Если текст короче максимальной длины, просто отправляем его
     if len(text) <= MAX_LENGTH:
         return await message.answer(text, reply_markup=reply_markup, parse_mode=parse_mode)
-        
-     
-    # Если используется Markdown, нужно быть осторожным с разделением
-    if parse_mode == ParseMode.MARKDOWN:
-        # Маркеры, которые должны быть закрыты в том же чанке
-        markdown_markers = ['```', '**', '__', '*', '_', '`']
-        chunks = []
-        start_idx = 0
-        
-        while start_idx < len(text):
-            end_idx = min(start_idx + MAX_LENGTH, len(text))
-            if end_idx < len(text):
-                # Находим безопасную точку для разделения текста
-                # Идем назад от конца чанка, пока не найдем перенос строки
-                safe_end = end_idx
-                while safe_end > start_idx + MAX_LENGTH // 2:
-                    if text[safe_end] == '\n':
-                        break
-                    safe_end -= 1
-                
-                # Если не нашли подходящий перенос строки, используем исходный конец
-                if safe_end <= start_idx + MAX_LENGTH // 2:
-                    safe_end = end_idx
-                
-                end_idx = safe_end
-                
-            # Добавляем чанк
-            chunks.append(text[start_idx:end_idx])
-            start_idx = end_idx
-            
-        # Хак: если в тексте есть незакрытые маркеры, лучше отправить без парсинга
-        for marker in markdown_markers:
-            if text.count(marker) % 2 != 0:
-                parse_mode = None
-                break
-    else:
-        # Разбиваем на части
-        chunks = []
-        for i in range(0, len(text), MAX_LENGTH):
-            chunks.append(text[i:i + MAX_LENGTH])
     
-    # Отправляем все части кроме последней
-    for chunk in chunks[:-1]:
-        await message.answer(chunk, parse_mode=parse_mode)
+    # Если текст длиннее, отправляем его как файл
+    # Создаем временный файл
+    import tempfile
+    import os
+    from datetime import datetime
+    from aiogram.types import FSInputFile
     
-    # Последнюю часть отправляем с клавиатурой
-    return await message.answer(chunks[-1], reply_markup=reply_markup, parse_mode=parse_mode)
+    # Создаем имя файла с временной меткой
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"response_{timestamp}.txt"
+    
+    # Создаем временный файл
+    with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt', encoding='utf-8') as temp_file:
+        temp_file.write(text)
+        temp_file_path = temp_file.name
+    
+    try:
+        # Отправляем файл
+        input_file = FSInputFile(temp_file_path, filename=filename)
+        await message.answer_document(
+            document=input_file,
+            caption="📄 Ответ слишком длинный, отправляю файлом",
+            reply_markup=reply_markup
+        )
+    finally:
+        # Удаляем временный файл
+        os.unlink(temp_file_path)
 
 @router.callback_query(F.data.startswith("set_max_tokens:"))
 async def set_max_tokens(callback: CallbackQuery, state: FSMContext):
