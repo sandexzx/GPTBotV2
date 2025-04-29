@@ -19,13 +19,13 @@ class ChatStates(StatesGroup):
 
 @router.callback_query(F.data.startswith("model:"))
 async def select_model(callback: CallbackQuery, state: FSMContext):
-    """Обработка выбора модели"""
+    # Получаем модель из callback_data
     model = callback.data.split(":")[1]
     
     # Сохраняем выбранную модель в состоянии
     await state.update_data(model=model)
 
-     # Проверяем, есть ли выбранный промпт
+    # Проверяем, есть ли выбранный промпт
     data = await state.get_data()
     selected_prompt_id = data.get("selected_prompt_id")
 
@@ -46,7 +46,6 @@ async def select_model(callback: CallbackQuery, state: FSMContext):
     if system_instruction:
         await state.update_data(system_instruction=system_instruction)
 
-
     # Добавляем ставки модели в состояние
     from config import MODELS
     model_rates = MODELS.get(model, {"input": 0, "output": 0})
@@ -56,13 +55,13 @@ async def select_model(callback: CallbackQuery, state: FSMContext):
     )
     
     # Получаем или создаем пользователя
-    user = get_or_create_user(
+    user_id = get_or_create_user(
         callback.from_user.id, 
         callback.from_user.username
     )
     
     # Создаем новый чат
-    chat_id = create_chat(user.id, model)
+    chat_id = create_chat(user_id, model)
     
     # Сохраняем ID чата в состоянии
     await state.update_data(chat_id=chat_id)
@@ -73,7 +72,6 @@ async def select_model(callback: CallbackQuery, state: FSMContext):
         prompt = get_prompt_by_id(selected_prompt_id)
         message_text += f"\n\n🔮 Промпт \"{prompt.name}\" применён к чату."
     message_text += "\n\nОтправь сообщение, и я передам его модели."
-    
     
     await callback.message.edit_text(
         message_text,

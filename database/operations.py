@@ -4,22 +4,17 @@ from typing import Optional, List, Dict, Any
 from .models import Session, User, Chat, Message, Prompt
 
 
-def get_or_create_user(tg_id: int, username: Optional[str] = None) -> User:
-    """Получить или создать пользователя"""
+def get_or_create_user(tg_id: int, username: Optional[str] = None) -> int:
+    """Получить существующего пользователя или создать нового"""
     session = Session()
-    try:
-        user = session.query(User).filter(User.tg_id == tg_id).one()
-        if username and user.username != username:
-            user.username = username
-            session.commit()
-    except NoResultFound:
+    user = session.query(User).filter(User.tg_id == tg_id).first()
+    if not user:
         user = User(tg_id=tg_id, username=username)
         session.add(user)
         session.commit()
-    
-    result = user
+    user_id = user.id
     session.close()
-    return result
+    return user_id
 
 
 def create_chat(user_id: int, model: str) -> int:

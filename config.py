@@ -3,7 +3,7 @@ from typing import Dict, List
 from dotenv import load_dotenv
 
 # Загружаем переменные окружения из .env файла
-load_dotenv()
+load_dotenv(override=True)  # Принудительно перезагружаем переменные окружения
 
 # Константы бота
 TOKEN = os.getenv("BOT_TOKEN")

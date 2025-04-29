@@ -3,3 +3,4 @@ openai_bot.db
 .env
 ToDo
 venv/
+.venv/
