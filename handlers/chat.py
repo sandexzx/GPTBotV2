@@ -159,7 +159,8 @@ async def process_message(message: Message, state: FSMContext):
                 input_text=request['message'].text,
                 messages=chat_messages,
                 system_instruction=current_system_instruction,
-                max_tokens=current_data.get("max_tokens", None)
+                max_tokens=current_data.get("max_tokens", None),
+                stream=True  # Включаем стриминг
             )
 
             if response["success"]:
@@ -173,13 +174,46 @@ async def process_message(message: Message, state: FSMContext):
                     model=current_model
                 )
 
+                # Создаем сообщение для редактирования
+                bot_message = await request['message'].answer("⌛ Генерирую ответ...")
+                full_response = ""
+                output_tokens = 0
+                last_update_length = 0
+
+                # Обрабатываем стрим
+                async for chunk in response["stream"]:
+                    if chunk.choices[0].delta.content is not None:
+                        content = chunk.choices[0].delta.content
+                        full_response += content
+                        output_tokens += 1  # Примерная оценка токенов
+
+                        # Отправляем обновление каждые 50 символов или если это последний чанк
+                        if len(full_response) - last_update_length >= 50 or not chunk.choices[0].finish_reason is None:
+                            try:
+                                await bot_message.edit_text(full_response)
+                                last_update_length = len(full_response)
+                            except Exception as e:
+                                # Если возникла ошибка при редактировании (например, пустое сообщение),
+                                # просто пропускаем это обновление
+                                logging.warning(f"Не удалось обновить сообщение: {str(e)}")
+
+                # Обновляем финальный текст, если он не пустой
+                if full_response.strip():
+                    try:
+                        await bot_message.edit_text(full_response)
+                    except Exception as e:
+                        logging.error(f"Не удалось обновить финальное сообщение: {str(e)}")
+                        # Если не удалось отредактировать, отправляем новое сообщение
+                        await request['message'].answer(full_response)
+
                 # Добавляем ответ ассистента в БД
+                output_cost = calculate_cost(output_tokens, current_model, is_input=False)
                 add_message(
                     current_chat_id,
                     "assistant",
-                    response["output_text"],
-                    response["output_tokens"],
-                    response["output_cost"]
+                    full_response,
+                    output_tokens,
+                    output_cost
                 )
 
                 # Получаем статистику чата
@@ -188,16 +222,11 @@ async def process_message(message: Message, state: FSMContext):
                 # Форматируем статистику
                 stats_text = format_stats(
                     response["input_tokens"],
-                    response["output_tokens"],
+                    output_tokens,
                     current_model,
                     chat_stats["tokens_input"],
                     chat_stats["tokens_output"]
                 )
-
-                # Отправляем ответ
-                contains_markdown = any(marker in response['output_text'] for marker in ['```', '**', '__', '*', '_', '`'])
-                parse_mode = ParseMode.MARKDOWN if contains_markdown else ParseMode.HTML
-                await send_chunked_message(request['message'], response['output_text'], parse_mode=parse_mode)
 
                 # Отправляем статистику
                 await request['message'].answer(

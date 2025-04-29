@@ -19,7 +19,8 @@ async def send_message_to_openai(
     input_text: str, 
     messages: List[Dict[str, str]] = None,
     system_instruction: Optional[str] = None,
-    max_tokens: Optional[int] = None
+    max_tokens: Optional[int] = None,
+    stream: bool = False
 ) -> Dict[str, Any]:
     """Отправить сообщение в OpenAI API и получить ответ"""
 
@@ -73,7 +74,8 @@ async def send_message_to_openai(
             response = await client.chat.completions.create(
                 model=model,
                 messages=api_messages,
-                max_tokens=max_tokens
+                max_tokens=max_tokens,
+                stream=stream
             )
             end_time = datetime.now()
             elapsed = (end_time - start_time).total_seconds()
@@ -81,54 +83,30 @@ async def send_message_to_openai(
         except Exception as api_error:
             logger.error(f"⚠️ Ошибка при выполнении запроса к API: {str(api_error)}")
             raise  # Пробрасываем ошибку дальше для основного блока try/except
-        
-        # Получим ответ модели
-        output_text = response.choices[0].message.content
 
-        # Проверяем, не пустой ли ответ
-        if not output_text.strip():
-            output_text = "[Модель вернула пустой ответ. Попробуйте переформулировать запрос.]"
-        
-        # Считаем токены
-        input_tokens = response.usage.prompt_tokens
-        output_tokens = response.usage.completion_tokens
-
-        # Логируем точное количество токенов для отладки
-        logger.info(f"📊 Точное количество токенов запроса: {input_tokens}")
-        logger.info(f"📊 Точное количество токенов ответа: {output_tokens}")
-       
-        
-        # Считаем стоимость
-        input_cost = calculate_cost(input_tokens, model, True)
-        output_cost = calculate_cost(output_tokens, model, False)
-        
-        return {
-            "success": True,
-            "output_text": output_text,
-            "input_tokens": input_tokens,
-            "output_tokens": output_tokens,
-            "input_cost": input_cost,
-            "output_cost": output_cost,
-            "total_cost": input_cost + output_cost,
-        }
-    
+        if stream:
+            # Для стриминга возвращаем сам стрим
+            return {
+                "success": True,
+                "stream": response,
+                "input_tokens": estimated_input_tokens
+            }
+        else:
+            # Для обычного ответа возвращаем полный текст
+            output_text = response.choices[0].message.content
+            output_tokens = response.usage.completion_tokens
+            output_cost = calculate_cost(output_tokens, model, is_input=False)
+            
+            return {
+                "success": True,
+                "output_text": output_text,
+                "output_tokens": output_tokens,
+                "output_cost": output_cost,
+                "input_tokens": estimated_input_tokens
+            }
     except Exception as e:
-        logger.error(f"❌ Ошибка при запросе к OpenAI API: {str(e)}")
-        import traceback
-        logger.error(f"Детали ошибки: {traceback.format_exc()}")
-
-        # Оценка токенов при ошибке
-        estimated_tokens = 0
-        for msg in api_messages:
-            estimated_tokens += get_token_count(msg["content"], model)
-         
-        
+        logger.error(f"❌ Ошибка при обработке запроса: {str(e)}")
         return {
             "success": False,
-            "error": str(e),
-            "input_tokens": estimated_tokens,
-            "output_tokens": 0,
-            "input_cost": calculate_cost(estimated_tokens, model, True),
-            "output_cost": 0,
-            "total_cost": calculate_cost(estimated_tokens, model, True),
+            "error": str(e)
         }
