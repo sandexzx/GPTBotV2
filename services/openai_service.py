@@ -9,6 +9,10 @@ if not OPENAI_API_KEY:
 from .token_counter import get_token_count, calculate_cost
 import asyncio
 
+import logging
+
+logger = logging.getLogger('telegram_bot')
+
 async def send_message_to_openai(
     model: str, 
     input_text: str, 
@@ -16,7 +20,6 @@ async def send_message_to_openai(
     system_instruction: Optional[str] = None
 ) -> Dict[str, Any]:
     """Отправить сообщение в OpenAI API и получить ответ"""
-    import logging
 
     # Инициализируем клиент здесь, чтобы быть уверенными, что переменные окружения загружены
     client = AsyncOpenAI(api_key=OPENAI_API_KEY, timeout=30.0)
@@ -44,21 +47,21 @@ async def send_message_to_openai(
         api_messages.append({"role": "user", "content": input_text})
     
     try:
-        logging.info(f"🔄 Отправка запроса к OpenAI API с моделью {model}")
-        logging.info(f"🧾 Содержимое запроса: {api_messages[-1]['content'][:50]}...")
-        logging.info(f"📊 Количество сообщений в истории: {len(api_messages)}")
+        logger.info(f"🔄 Отправка запроса к OpenAI API с моделью {model}")
+        logger.info(f"🧾 Содержимое запроса: {api_messages[-1]['content'][:50]}...")
+        logger.info(f"📊 Количество сообщений в истории: {len(api_messages)}")
 
         # Отправляем запрос в API
         try:
-            logging.info(f"⏱️ Начало запроса к OpenAI API")
+            logger.info(f"⏱️ Начало запроса к OpenAI API")
             response = await client.chat.completions.create(
                 model=model,
                 messages=api_messages,
                 max_tokens=4000
             )
-            logging.info(f"✅ Получен ответ от OpenAI API")
+            logger.info(f"✅ Получен ответ от OpenAI API")
         except Exception as api_error:
-            logging.error(f"⚠️ Ошибка при выполнении запроса к API: {str(api_error)}")
+            logger.error(f"⚠️ Ошибка при выполнении запроса к API: {str(api_error)}")
             raise  # Пробрасываем ошибку дальше для основного блока try/except
         
         # Получим ответ модели
@@ -83,9 +86,9 @@ async def send_message_to_openai(
         }
     
     except Exception as e:
-        logging.error(f"❌ Ошибка при запросе к OpenAI API: {str(e)}")
+        logger.error(f"❌ Ошибка при запросе к OpenAI API: {str(e)}")
         import traceback
-        logging.error(f"Детали ошибки: {traceback.format_exc()}")
+        logger.error(f"Детали ошибки: {traceback.format_exc()}")
         
         return {
             "success": False,
