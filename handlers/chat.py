@@ -28,7 +28,14 @@ async def select_model(callback: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     selected_prompt_id = data.get("selected_prompt_id")
     if selected_prompt_id:
-        await state.update_data(system_instruction=get_prompt_by_id(selected_prompt_id).content)
+        # Добавляем проверку на существование промпта
+        prompt = get_prompt_by_id(selected_prompt_id)
+        if prompt:
+            print(f"Применяем промпт {prompt.name} при создании чата")
+            await state.update_data(system_instruction=prompt.content)
+        else:
+            print(f"Промпт с ID {selected_prompt_id} не найден при создании чата")
+            await state.update_data(selected_prompt_id=None)
 
 
     # Добавляем ставки модели в состояние
@@ -76,6 +83,12 @@ async def process_message(message: Message, state: FSMContext):
     model = data.get("model")
     chat_id = data.get("chat_id")
     system_instruction = data.get("system_instruction")
+
+    # Отладочная информация
+    print(f"Модель: {model}, Chat ID: {chat_id}")
+    print(f"Системная инструкция установлена: {'Да' if system_instruction else 'Нет'}")
+    if system_instruction:
+        print(f"Длина инструкции: {len(system_instruction)} символов")
     
     # Проверяем наличие chat_id
     if not chat_id:
@@ -144,8 +157,9 @@ async def process_message(message: Message, state: FSMContext):
 async def use_prompt_in_chat(callback: CallbackQuery, state: FSMContext):
     # Проверяем состояние
     current_state = await state.get_state()
-    if current_state != ChatStates.waiting_for_message.__str__():
+    if current_state is None or current_state != "ChatStates:waiting_for_message":
         # Если не в чате, игнорируем
+        print(f"Игнорируем применение промпта, текущее состояние: {current_state}")
         return
     
     """Применение промпта к текущему чату"""
@@ -156,6 +170,7 @@ async def use_prompt_in_chat(callback: CallbackQuery, state: FSMContext):
     prompt = get_prompt_by_id(prompt_id)
     
     if prompt:
+        print(f"Применяем промпт {prompt.name} к чату")
         await state.update_data(system_instruction=prompt.content)
         await callback.message.edit_text(
             f"🔮 Промпт \"{prompt.name}\" успешно применен к текущему чату!\n"
@@ -163,6 +178,7 @@ async def use_prompt_in_chat(callback: CallbackQuery, state: FSMContext):
             reply_markup=chat_keyboard()
         )
     else:
+        print(f"Промпт с ID {prompt_id} не найден")
         await callback.message.edit_text(
             "❌ Ошибка: Промпт не найден. Попробуйте выбрать другой.",
             reply_markup=chat_keyboard()

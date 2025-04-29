@@ -145,14 +145,28 @@ async def redirect_use_prompt(callback: CallbackQuery, state: FSMContext):
     """Перенаправление запроса на использование промпта в чате"""
     # Получаем текущее состояние
     current_state = await state.get_state()
+    print(f"Текущее состояние при нажатии на промпт: {current_state}")
     
-    if current_state == ChatStates.waiting_for_message.__str__():
+    if current_state is not None and current_state == "ChatStates:waiting_for_message":
         # Если уже в чате, переадресуем обработку в chat.py
+        print("Пользователь уже в чате, переадресуем в chat.py")
         # Ничего делать не нужно, обработчик в chat.py сработает
         return
     else:
         # Сохраняем ID промпта в состоянии для будущего использования
         prompt_id = int(callback.data.split(":")[1])
+        # Проверяем промпт перед сохранением
+        from database.operations import get_prompt_by_id
+        prompt = get_prompt_by_id(prompt_id)
+        if not prompt:
+            await callback.message.edit_text(
+                "❌ Ошибка: Промпт не найден. Попробуйте выбрать другой.",
+                reply_markup=main_menu_keyboard()
+            )
+            await callback.answer()
+            return
+            
+        print(f"Сохраняем промпт ID {prompt_id}: {prompt.name} для использования")
         await state.update_data(selected_prompt_id=prompt_id)
         # Если не в чате, перенаправляем на выбор модели
         await callback.message.edit_text(
