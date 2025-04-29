@@ -35,7 +35,7 @@ VENV_DIR="/opt/telegram_bot_venv"
 MAX_BACKUPS=5
 PROJECT_NAME="telegram_bot"
 PYTHON_VERSION="3.12"
-MAIN_FILE=""
+MAIN_FILE="app.py"
 SYSTEMD_SERVICE_NAME=""
 GITHUB_REPO=""
 GITHUB_BRANCH="main"
@@ -732,7 +732,11 @@ perform_installation() {
         }
     else
         log "INFO" "Using local source code"
-        # Copy local source code here if needed
+        # Copy all files from current directory to deploy directory
+        cp -r ./* "$DEPLOY_DIR/" || {
+            log "ERROR" "Failed to copy source files"
+            exit 1
+        }
     fi
     
     # Detect project name and main file
