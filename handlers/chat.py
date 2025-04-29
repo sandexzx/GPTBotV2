@@ -111,7 +111,8 @@ async def process_message(message: Message, state: FSMContext):
     await message.bot.send_chat_action(message.chat.id, "typing")
     
     # Добавляем сообщение пользователя в БД
-    user_tokens = len(message.text.split()) * 1.3  # Примерная оценка токенов
+    from services.token_counter import get_token_count
+    user_tokens = get_token_count(message.text, model)  # Точная оценка токенов
     user_cost = user_tokens * (data.get("model_rate_input", 0) / 1_000_000)
     add_message(chat_id, "user", message.text, int(user_tokens), user_cost)
     

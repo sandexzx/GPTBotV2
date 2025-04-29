@@ -12,7 +12,7 @@ def get_token_count(text: str, model: str = "gpt-4.1") -> int:
         return tokens
     except Exception:
         # Если модель не поддерживается tiktoken, используем приблизительный подсчёт
-        return len(text.split()) * 1.3
+        return int(len(text) / 4)  # В среднем 1 токен ≈ 4 символа
 
 
 def calculate_cost(tokens: int, model: str, is_input: bool = True) -> float:

@@ -53,6 +53,13 @@ async def send_message_to_openai(
         if system_instruction:
             logger.info(f"🔮 Используется системная инструкция (промпт): {system_instruction[:50]}...")
 
+        # Оценка токенов перед запросом
+        from .token_counter import get_token_count
+        estimated_input_tokens = 0
+        for msg in api_messages:
+            estimated_input_tokens += get_token_count(msg["content"], model)
+        logger.info(f"📊 Примерная оценка токенов в запросе: {estimated_input_tokens}")
+
         # Отправляем запрос в API
         try:
             logger.info(f"⏱️ Начало запроса к OpenAI API")
@@ -72,6 +79,11 @@ async def send_message_to_openai(
         # Считаем токены
         input_tokens = response.usage.prompt_tokens
         output_tokens = response.usage.completion_tokens
+
+        # Логируем точное количество токенов для отладки
+        logger.info(f"📊 Точное количество токенов запроса: {input_tokens}")
+        logger.info(f"📊 Точное количество токенов ответа: {output_tokens}")
+       
         
         # Считаем стоимость
         input_cost = calculate_cost(input_tokens, model, True)
@@ -91,13 +103,19 @@ async def send_message_to_openai(
         logger.error(f"❌ Ошибка при запросе к OpenAI API: {str(e)}")
         import traceback
         logger.error(f"Детали ошибки: {traceback.format_exc()}")
+
+        # Оценка токенов при ошибке
+        estimated_tokens = 0
+        for msg in api_messages:
+            estimated_tokens += get_token_count(msg["content"], model)
+         
         
         return {
             "success": False,
             "error": str(e),
-            "input_tokens": get_token_count(input_text, model),
+            "input_tokens": estimated_tokens,
             "output_tokens": 0,
-            "input_cost": calculate_cost(get_token_count(input_text, model), model, True),
+            "input_cost": calculate_cost(estimated_tokens, model, True),
             "output_cost": 0,
-            "total_cost": calculate_cost(get_token_count(input_text, model), model, True),
+            "total_cost": calculate_cost(estimated_tokens, model, True),
         }
