@@ -130,17 +130,22 @@ async def process_message(message: Message, state: FSMContext):
 async def use_prompt_in_chat(callback: CallbackQuery, state: FSMContext):
     """Применение промпта к текущему чату"""
     prompt_id = int(callback.data.split(":")[1])
+
+    # Получаем промпт из БД
+    from database.operations import get_prompt_by_id
+    prompt = get_prompt_by_id(prompt_id)
     
-    # Здесь нужно получить промпт из БД
-    # И установить его как системную инструкцию для чата
+    if prompt:
+        await state.update_data(system_instruction=prompt.content)
+        await callback.message.edit_text(
+            f"🔮 Промпт \"{prompt.name}\" успешно применен к текущему чату!\n"
+            f"Теперь все сообщения будут обрабатываться согласно этому промпту.",
+            reply_markup=chat_keyboard()
+        )
+    else:
+        await callback.message.edit_text(
+            "❌ Ошибка: Промпт не найден. Попробуйте выбрать другой.",
+            reply_markup=chat_keyboard()
+        )
     
-    # Пример (нужно доработать):
-    # prompt = get_prompt(prompt_id)
-    # await state.update_data(system_instruction=prompt.content)
-    
-    await callback.message.edit_text(
-        "Промпт успешно применен к текущему чату!\n"
-        "Теперь все сообщения будут обрабатываться согласно этому промпту.",
-        reply_markup=chat_keyboard()
-    )
     await callback.answer()

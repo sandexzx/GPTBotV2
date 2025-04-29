@@ -94,11 +94,24 @@ async def show_prompt_actions(callback: CallbackQuery, state: FSMContext):
     # Сохраняем ID промпта в состоянии
     await state.update_data(prompt_id=prompt_id)
     
-    # В реальном коде здесь нужно получить промпт из БД
-    # И показать его название и начало содержимого
+    # Получаем промпт из БД
+    from database.operations import get_prompt_by_id
+    prompt = get_prompt_by_id(prompt_id)
+    
+    if not prompt:
+        await callback.message.edit_text(
+            "❌ Промпт не найден. Возможно, он был удалён.",
+            reply_markup=main_menu_keyboard()
+        )
+        await callback.answer()
+        return
+    
+    # Подготавливаем превью содержимого (первые 100 символов)
+    content_preview = prompt.content[:100] + "..." if len(prompt.content) > 100 else prompt.content
     
     await callback.message.edit_text(
-        f"Промпт #{prompt_id}\n\n"
+        f"📄 Промпт: \"{prompt.name}\"\n\n"
+        f"Содержимое:\n{content_preview}\n\n"
         f"Выбери действие:",
         reply_markup=prompt_actions_keyboard(prompt_id)
     )

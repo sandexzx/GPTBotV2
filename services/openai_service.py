@@ -50,6 +50,8 @@ async def send_message_to_openai(
         logger.info(f"🔄 Отправка запроса к OpenAI API с моделью {model}")
         logger.info(f"🧾 Содержимое запроса: {api_messages[-1]['content'][:50]}...")
         logger.info(f"📊 Количество сообщений в истории: {len(api_messages)}")
+        if system_instruction:
+            logger.info(f"🔮 Используется системная инструкция (промпт): {system_instruction[:50]}...")
 
         # Отправляем запрос в API
         try:

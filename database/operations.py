@@ -35,6 +35,17 @@ def create_chat(user_id: int, model: str) -> int:
     session.close()
     return result
 
+def get_prompt_by_id(prompt_id: int) -> Optional[Prompt]:
+    """Получить промпт по ID"""
+    session = Session()
+    try:
+        prompt = session.query(Prompt).filter(Prompt.id == prompt_id).one()
+        result = prompt  # Сохраняем результат до закрытия сессии
+        session.close()
+        return result
+    except NoResultFound:
+        session.close()
+        return None
 
 def add_message(chat_id: int, role: str, content: str, tokens: int, cost_usd: float) -> Message:
     """Добавить сообщение в чат"""
