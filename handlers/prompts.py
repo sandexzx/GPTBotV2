@@ -6,7 +6,7 @@ from aiogram.fsm.state import State, StatesGroup
 
 from database.operations import get_or_create_user, get_user_prompts, save_prompt, delete_prompt
 from handlers.chat import ChatStates
-from keyboards.keyboards import models_keyboard, prompts_keyboard, prompt_actions_keyboard, main_menu_keyboard
+from keyboards.keyboards import chat_keyboard, models_keyboard, prompts_keyboard, prompt_actions_keyboard, main_menu_keyboard
 
 router = Router()
 
@@ -147,31 +147,53 @@ async def redirect_use_prompt(callback: CallbackQuery, state: FSMContext):
     current_state = await state.get_state()
     print(f"Текущее состояние при нажатии на промпт: {current_state}")
     
-    if current_state is not None and current_state == "ChatStates:waiting_for_message":
-        # Если уже в чате, переадресуем обработку в chat.py
-        print("Пользователь уже в чате, переадресуем в chat.py")
-        # Ничего делать не нужно, обработчик в chat.py сработает
+    # Сохраняем ID промпта в состоянии для будущего использования
+    prompt_id = int(callback.data.split(":")[1])
+    
+    # Проверяем промпт перед сохранением
+    from database.operations import get_prompt_by_id
+    prompt = get_prompt_by_id(prompt_id)
+    if not prompt:
+        await callback.message.edit_text(
+            "❌ Ошибка: Промпт не найден. Попробуйте выбрать другой.",
+            reply_markup=main_menu_keyboard()
+        )
+        await callback.answer()
         return
-    else:
-        # Сохраняем ID промпта в состоянии для будущего использования
-        prompt_id = int(callback.data.split(":")[1])
-        # Проверяем промпт перед сохранением
-        from database.operations import get_prompt_by_id
-        prompt = get_prompt_by_id(prompt_id)
-        if not prompt:
+        
+    print(f"Сохраняем промпт ID {prompt_id}: {prompt.name} для использования")
+    
+    # Очищаем состояние и сохраняем ID промпта
+    await state.clear()
+    await state.update_data(selected_prompt_id=prompt_id)
+    
+    # Проверяем, находимся ли мы в чате
+    if current_state is not None and current_state == "ChatStates:waiting_for_message":
+        # Если в чате, применяем промпт напрямую
+        print(f"Применяем промпт к текущему чату")
+        data = await state.get_data()
+        chat_id = data.get("chat_id") 
+        
+        if chat_id:
+            # Устанавливаем системную инструкцию
+            await state.update_data(system_instruction=prompt.content)
             await callback.message.edit_text(
-                "❌ Ошибка: Промпт не найден. Попробуйте выбрать другой.",
-                reply_markup=main_menu_keyboard()
+                f"🔮 Промпт \"{prompt.name}\" успешно применен к текущему чату!\n"
+                f"Теперь все сообщения будут обрабатываться согласно этому промпту.",
+                reply_markup=chat_keyboard()
             )
-            await callback.answer()
-            return
-            
-        print(f"Сохраняем промпт ID {prompt_id}: {prompt.name} для использования")
-        await state.update_data(selected_prompt_id=prompt_id)
+            await state.set_state(ChatStates.waiting_for_message)
+        else:
+            # Если нет chat_id, перенаправляем на выбор модели
+            await callback.message.edit_text(
+                f"Выбери модель для нового чата с промптом \"{prompt.name}\":",
+                reply_markup=models_keyboard()
+            )
+    else:
         # Если не в чате, перенаправляем на выбор модели
         await callback.message.edit_text(
-             "Выбери модель для нового чата с этим промптом:",
-             reply_markup=models_keyboard()
+            f"Выбери модель для нового чата с промптом \"{prompt.name}\":",
+            reply_markup=models_keyboard()
         )
     
     await callback.answer()

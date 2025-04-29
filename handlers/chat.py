@@ -27,15 +27,23 @@ async def select_model(callback: CallbackQuery, state: FSMContext):
      # Проверяем, есть ли выбранный промпт
     data = await state.get_data()
     selected_prompt_id = data.get("selected_prompt_id")
+
+    print(f"Выбор модели {model}, выбранный промпт ID: {selected_prompt_id}")
+    
+    system_instruction = None
     if selected_prompt_id:
         # Добавляем проверку на существование промпта
         prompt = get_prompt_by_id(selected_prompt_id)
         if prompt:
             print(f"Применяем промпт {prompt.name} при создании чата")
-            await state.update_data(system_instruction=prompt.content)
+            system_instruction = prompt.content
         else:
             print(f"Промпт с ID {selected_prompt_id} не найден при создании чата")
             await state.update_data(selected_prompt_id=None)
+
+    # Обновляем состояние с системной инструкцией
+    if system_instruction:
+        await state.update_data(system_instruction=system_instruction)
 
 
     # Добавляем ставки модели в состояние
@@ -72,6 +80,7 @@ async def select_model(callback: CallbackQuery, state: FSMContext):
     )
     
     await state.set_state(ChatStates.waiting_for_message)
+    print(f"Установлено состояние: ChatStates:waiting_for_message")
     await callback.answer()
 
 
@@ -157,10 +166,7 @@ async def process_message(message: Message, state: FSMContext):
 async def use_prompt_in_chat(callback: CallbackQuery, state: FSMContext):
     # Проверяем состояние
     current_state = await state.get_state()
-    if current_state is None or current_state != "ChatStates:waiting_for_message":
-        # Если не в чате, игнорируем
-        print(f"Игнорируем применение промпта, текущее состояние: {current_state}")
-        return
+    print(f"Применение промпта в чате, текущее состояние: {current_state}")
     
     """Применение промпта к текущему чату"""
     prompt_id = int(callback.data.split(":")[1])
@@ -168,6 +174,13 @@ async def use_prompt_in_chat(callback: CallbackQuery, state: FSMContext):
     # Получаем промпт из БД
     from database.operations import get_prompt_by_id
     prompt = get_prompt_by_id(prompt_id)
+
+    # Проверяем, находимся ли мы в чате
+    if current_state is None or current_state != "ChatStates:waiting_for_message":
+        # Перенаправляем на обработчик в prompts.py
+        from handlers.prompts import redirect_use_prompt
+        await redirect_use_prompt(callback, state)
+        return
     
     if prompt:
         print(f"Применяем промпт {prompt.name} к чату")
