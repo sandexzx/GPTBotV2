@@ -3,10 +3,12 @@ from aiogram.types import Message, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.enums.parse_mode import ParseMode
+import logging
 
 from database.operations import get_or_create_user, create_chat, add_message, get_chat_messages, get_chat_stats, get_prompt_by_id
 from services.openai_service import send_message_to_openai
 from services.token_counter import calculate_cost, format_stats
+from services.queue_manager import queue_manager
 from keyboards.keyboards import chat_keyboard, models_keyboard, main_menu_keyboard
 from config import MAIN_ADMIN_ID
 
@@ -88,18 +90,20 @@ async def select_model(callback: CallbackQuery, state: FSMContext):
 @router.message(ChatStates.waiting_for_message)
 async def process_message(message: Message, state: FSMContext):
     """Обработка сообщения в чате"""
+    # Проверяем, не находится ли пользователь уже в очереди
+    if queue_manager.is_user_in_queue(message.from_user.id):
+        await message.answer(
+            "⏳ Ваш предыдущий запрос еще в очереди. Пожалуйста, дождитесь его обработки.",
+            reply_markup=chat_keyboard()
+        )
+        return
+
     # Получаем данные из состояния
     data = await state.get_data()
     model = data.get("model")
     chat_id = data.get("chat_id")
     system_instruction = data.get("system_instruction")
 
-    # Отладочная информация
-    print(f"Модель: {model}, Chat ID: {chat_id}")
-    print(f"Системная инструкция установлена: {'Да' if system_instruction else 'Нет'}")
-    if system_instruction:
-        print(f"Длина инструкции: {len(system_instruction)} символов")
-    
     # Проверяем наличие chat_id
     if not chat_id:
         await message.answer(
@@ -107,90 +111,112 @@ async def process_message(message: Message, state: FSMContext):
             reply_markup=main_menu_keyboard()
         )
         return
-    
-    # Показываем статус "печатает..."
-    await message.bot.send_chat_action(message.chat.id, "typing")
-    
-    # Добавляем сообщение пользователя в БД
-    from services.token_counter import get_token_count
-    user_tokens = get_token_count(message.text, model)  # Более точная оценка
-    user_cost = user_tokens * (data.get("model_rate_input", 0) / 1_000_000)
-    add_message(chat_id, "user", message.text, int(user_tokens), user_cost)
-    
-    # Получаем историю чата
-    chat_messages = get_chat_messages(chat_id)
-    
-    # Отправляем уведомление главному админу только если запрос делает не главный админ
-    if message.from_user.id != MAIN_ADMIN_ID:
-        admin_notification = (
-            f"🆕 Новый запрос от пользователя:\n"
-            f"👤 ID: {message.from_user.id}\n"
-            f"📝 Текст: {message.text}\n"
-            f"🤖 Модель: {model}"
-        )
-        await message.bot.send_message(MAIN_ADMIN_ID, admin_notification)
-    
-    # Отправляем запрос в OpenAI
-    response = await send_message_to_openai(
-        model=model,
-        input_text=message.text,
-        messages=chat_messages,
-        system_instruction=system_instruction,
-        max_tokens=data.get("max_tokens", None)  # Берем из состояния, если указано
-    )
-    
-    if response["success"]:
-        # Обновляем данные о токенах с фактическими от API
-        from database.operations import update_message_tokens
-        update_message_tokens(
-            chat_id=chat_id,
-            is_user_message=True,
-            new_tokens=response["input_tokens"],
-            old_tokens=user_tokens,
-            model=model
-        )
-        
-        # Добавляем ответ ассистента в БД
-        add_message(
-            chat_id,
-            "assistant",
-            response["output_text"],
-            response["output_tokens"],
-            response["output_cost"]
-        )
-        
-        # Получаем статистику чата
-        chat_stats = get_chat_stats(chat_id)
-        
-        # Форматируем статистику
-        stats_text = format_stats(
-            response["input_tokens"],
-            response["output_tokens"],
-            model,
-            chat_stats["tokens_input"],
-            chat_stats["tokens_output"]
-        )
-        
-        # Отправляем ответ с статистикой
-        # Сначала отправляем ответ модели
-        # Отправляем ответ модели частями при необходимости
-        # Проверяем, есть ли маркеры Markdown в тексте
-        contains_markdown = any(marker in response['output_text'] for marker in ['```', '**', '__', '*', '_', '`'])
-        parse_mode = ParseMode.MARKDOWN if contains_markdown else ParseMode.HTML
-        await send_chunked_message(message, response['output_text'], parse_mode=parse_mode)
-        
-        # Затем отправляем статистику отдельным сообщением
+
+    # Добавляем запрос в очередь
+    position = await queue_manager.add_to_queue(message)
+
+    # Отправляем уведомление о постановке в очередь
+    if position > 1:
         await message.answer(
-            f"📊 Статистика:{stats_text}",
+            f"⏳ Ваш запрос поставлен в очередь. Позиция: {position}\n"
+            f"Вы получите уведомление, когда начнется обработка вашего запроса.",
             reply_markup=chat_keyboard()
         )
-    else:
-        # В случае ошибки
-        await message.answer(
-            f"❌ Произошла ошибка: {response['error']}\n\n"
-            f"Попробуйте еще раз или выберите другую модель.",
-            reply_markup=chat_keyboard()
-        )
+
+    # Обрабатываем очередь
+    async for request in queue_manager.process_queue():
+        # Получаем данные из состояния для текущего запроса
+        current_data = await state.get_data()
+        current_model = current_data.get("model")
+        current_chat_id = current_data.get("chat_id")
+        current_system_instruction = current_data.get("system_instruction")
+
+        # Добавляем сообщение пользователя в БД
+        from services.token_counter import get_token_count
+        user_tokens = get_token_count(request['message'].text, current_model)
+        user_cost = user_tokens * (current_data.get("model_rate_input", 0) / 1_000_000)
+        add_message(current_chat_id, "user", request['message'].text, int(user_tokens), user_cost)
+
+        # Получаем историю чата
+        chat_messages = get_chat_messages(current_chat_id)
+
+        # Отправляем уведомление главному админу
+        if request['user_id'] != MAIN_ADMIN_ID:
+            admin_notification = (
+                f"🆕 Новый запрос от пользователя:\n"
+                f"👤 ID: {request['user_id']}\n"
+                f"📝 Текст: {request['message'].text}\n"
+                f"🤖 Модель: {current_model}"
+            )
+            await request['bot'].send_message(MAIN_ADMIN_ID, admin_notification)
+
+        try:
+            # Отправляем запрос в OpenAI
+            response = await send_message_to_openai(
+                model=current_model,
+                input_text=request['message'].text,
+                messages=chat_messages,
+                system_instruction=current_system_instruction,
+                max_tokens=current_data.get("max_tokens", None)
+            )
+
+            if response["success"]:
+                # Обновляем данные о токенах
+                from database.operations import update_message_tokens
+                update_message_tokens(
+                    chat_id=current_chat_id,
+                    is_user_message=True,
+                    new_tokens=response["input_tokens"],
+                    old_tokens=user_tokens,
+                    model=current_model
+                )
+
+                # Добавляем ответ ассистента в БД
+                add_message(
+                    current_chat_id,
+                    "assistant",
+                    response["output_text"],
+                    response["output_tokens"],
+                    response["output_cost"]
+                )
+
+                # Получаем статистику чата
+                chat_stats = get_chat_stats(current_chat_id)
+
+                # Форматируем статистику
+                stats_text = format_stats(
+                    response["input_tokens"],
+                    response["output_tokens"],
+                    current_model,
+                    chat_stats["tokens_input"],
+                    chat_stats["tokens_output"]
+                )
+
+                # Отправляем ответ
+                contains_markdown = any(marker in response['output_text'] for marker in ['```', '**', '__', '*', '_', '`'])
+                parse_mode = ParseMode.MARKDOWN if contains_markdown else ParseMode.HTML
+                await send_chunked_message(request['message'], response['output_text'], parse_mode=parse_mode)
+
+                # Отправляем статистику
+                await request['message'].answer(
+                    f"📊 Статистика:{stats_text}",
+                    reply_markup=chat_keyboard()
+                )
+            else:
+                # В случае ошибки отправляем сообщение пользователю
+                await request['message'].answer(
+                    "❌ Произошла ошибка при обработке запроса. Пожалуйста, попробуйте позже.",
+                    reply_markup=chat_keyboard()
+                )
+        except Exception as e:
+            # В случае неожиданной ошибки
+            await request['message'].answer(
+                f"❌ Произошла непредвиденная ошибка: {str(e)}\n"
+                "Пожалуйста, попробуйте позже или обратитесь к администратору.",
+                reply_markup=chat_keyboard()
+            )
+            # Логируем ошибку
+            logging.error(f"Error processing message: {str(e)}")
 
 
 @router.callback_query(F.data.startswith("use_prompt:"))

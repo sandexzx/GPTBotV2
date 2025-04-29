@@ -7,6 +7,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums.parse_mode import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
 from database.models import create_tables
+from services.queue_manager import start_queue_updates
 
 from config import TOKEN, OPENAI_API_KEY
 from handlers import setup_routers
@@ -49,6 +50,9 @@ async def main():
     
     # Создаем таблицы в БД (если они не существуют)
     create_tables()
+    
+    # Запускаем задачу обновления статуса очереди
+    asyncio.create_task(start_queue_updates())
     
     # Запускаем бота
     logging.info("🚀 Бот запущен")
