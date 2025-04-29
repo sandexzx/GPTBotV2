@@ -126,8 +126,14 @@ async def process_message(message: Message, state: FSMContext):
         )
 
 
-@router.callback_query(F.data.startswith("use_prompt:"), ChatStates.waiting_for_message)
+@router.callback_query(F.data.startswith("use_prompt:"))
 async def use_prompt_in_chat(callback: CallbackQuery, state: FSMContext):
+    # Проверяем состояние
+    current_state = await state.get_state()
+    if current_state != ChatStates.waiting_for_message.__str__():
+        # Если не в чате, игнорируем
+        return
+    
     """Применение промпта к текущему чату"""
     prompt_id = int(callback.data.split(":")[1])
 

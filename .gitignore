@@ -2,3 +2,4 @@ __pycache__/
 openai_bot.db
 .env
 ToDo
+venv/

@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 
 from database.operations import get_or_create_user, get_user_prompts, save_prompt, delete_prompt
+from handlers.chat import ChatStates
 from keyboards.keyboards import prompts_keyboard, prompt_actions_keyboard, main_menu_keyboard
 
 router = Router()
@@ -134,6 +135,25 @@ async def delete_prompt_action(callback: CallbackQuery, state: FSMContext):
     else:
         await callback.message.edit_text(
             "❌ Не удалось удалить промпт.",
+            reply_markup=main_menu_keyboard()
+        )
+    
+    await callback.answer()
+
+@router.callback_query(F.data.startswith("use_prompt:"))
+async def redirect_use_prompt(callback: CallbackQuery, state: FSMContext):
+    """Перенаправление запроса на использование промпта в чате"""
+    # Получаем текущее состояние
+    current_state = await state.get_state()
+    
+    if current_state == ChatStates.waiting_for_message.__str__():
+        # Если уже в чате, переадресуем обработку в chat.py
+        # Ничего делать не нужно, обработчик в chat.py сработает
+        return
+    else:
+        # Если не в чате, сообщаем что нужно сначала начать чат
+        await callback.message.edit_text(
+            "Сначала нужно начать чат, чтобы использовать промпт!",
             reply_markup=main_menu_keyboard()
         )
     
