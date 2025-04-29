@@ -119,14 +119,15 @@ async def process_message(message: Message, state: FSMContext):
     # Получаем историю чата
     chat_messages = get_chat_messages(chat_id)
     
-    # Отправляем уведомление главному админу
-    admin_notification = (
-        f"🆕 Новый запрос от пользователя:\n"
-        f"👤 ID: {message.from_user.id}\n"
-        f"📝 Текст: {message.text}\n"
-        f"🤖 Модель: {model}"
-    )
-    await message.bot.send_message(MAIN_ADMIN_ID, admin_notification)
+    # Отправляем уведомление главному админу только если запрос делает не главный админ
+    if message.from_user.id != MAIN_ADMIN_ID:
+        admin_notification = (
+            f"🆕 Новый запрос от пользователя:\n"
+            f"👤 ID: {message.from_user.id}\n"
+            f"📝 Текст: {message.text}\n"
+            f"🤖 Модель: {model}"
+        )
+        await message.bot.send_message(MAIN_ADMIN_ID, admin_notification)
     
     # Отправляем запрос в OpenAI
     response = await send_message_to_openai(
