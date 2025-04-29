@@ -78,6 +78,9 @@ async def back_to_main(callback: CallbackQuery, state: FSMContext):
 @router.callback_query(F.data == "new_chat")
 async def new_chat(callback: CallbackQuery, state: FSMContext):
     """Начало нового чата - выбор модели"""
+    # Очищаем состояние, чтобы сбросить все прикрепленные файлы и промпты
+    await state.clear()
+    
     await callback.message.edit_text(
         "Выбери модель для чата:\n\n"
         "Стоимость указана за 1 миллион токенов.",
