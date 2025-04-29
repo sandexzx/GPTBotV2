@@ -1,6 +1,7 @@
 import os
 from typing import Dict, List
 from dotenv import load_dotenv
+# Тестирую изменения
 
 # Загружаем переменные окружения из .env файла
 load_dotenv()
