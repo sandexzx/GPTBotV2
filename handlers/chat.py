@@ -128,36 +128,15 @@ async def process_message(message: Message, state: FSMContext):
     )
     
     if response["success"]:
-        # ВОТ ГДЕ ПРОБЛЕМА! Нам нужно обновить предыдущую запись о токенах пользователя
-        # с фактическими данными, которые пришли от API
-        from database.models import Session, Message, Chat
-        session = Session()
-        # Получаем последнее сообщение пользователя и обновляем его токены
-        last_user_message = session.query(Message).filter(
-            Message.chat_id == chat_id, 
-            Message.role == "user"
-        ).order_by(Message.id.desc()).first()
-        if last_user_message:
-            # Вычисляем разницу между оценкой и реальным количеством
-            tokens_diff = response["input_tokens"] - last_user_message.tokens
-            cost_diff = calculate_cost(tokens_diff, model, True)
-            
-            # Обновляем запись сообщения
-            last_user_message.tokens = response["input_tokens"]
-            last_user_message.cost_usd = calculate_cost(response["input_tokens"], model, True)
-            
-            # Обновляем статистику чата
-            chat = session.query(Chat).filter(Chat.id == chat_id).one()
-            chat.tokens_input += tokens_diff
-            chat.cost_usd += cost_diff
-            
-            # Обновляем статистику пользователя
-            user = chat.user
-            user.total_tokens_input += tokens_diff
-            user.total_cost_usd += cost_diff
-            
-            session.commit()
-        session.close()
+        # Обновляем данные о токенах с фактическими от API
+        from database.operations import update_message_tokens
+        update_message_tokens(
+            chat_id=chat_id,
+            is_user_message=True,
+            new_tokens=response["input_tokens"],
+            old_tokens=user_tokens,
+            model=model
+        )
         
         # Добавляем ответ ассистента в БД
         add_message(
@@ -181,8 +160,13 @@ async def process_message(message: Message, state: FSMContext):
         )
         
         # Отправляем ответ с статистикой
+        # Сначала отправляем ответ модели
+        # Отправляем ответ модели частями при необходимости
+        await send_chunked_message(message, response['output_text'])
+        
+        # Затем отправляем статистику отдельным сообщением
         await message.answer(
-            f"{response['output_text']}{stats_text}",
+            f"📊 Статистика:{stats_text}",
             reply_markup=chat_keyboard()
         )
     else:
@@ -230,3 +214,22 @@ async def use_prompt_in_chat(callback: CallbackQuery, state: FSMContext):
         )
     
     await callback.answer()
+
+async def send_chunked_message(message: Message, text: str, reply_markup=None):
+    """Отправляет длинный текст частями, если он превышает лимит Telegram"""
+    MAX_LENGTH = 4096  # Максимальная длина сообщения в Telegram
+    
+    if len(text) <= MAX_LENGTH:
+        return await message.answer(text, reply_markup=reply_markup)
+        
+    # Разбиваем на части
+    chunks = []
+    for i in range(0, len(text), MAX_LENGTH):
+        chunks.append(text[i:i + MAX_LENGTH])
+    
+    # Отправляем все части кроме последней
+    for chunk in chunks[:-1]:
+        await message.answer(chunk)
+    
+    # Последнюю часть отправляем с клавиатурой
+    return await message.answer(chunks[-1], reply_markup=reply_markup)

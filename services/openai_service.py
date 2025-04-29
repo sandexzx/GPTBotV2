@@ -1,4 +1,5 @@
 import json
+from datetime import datetime
 from typing import Dict, Any, List, Optional
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
@@ -47,7 +48,8 @@ async def send_message_to_openai(
         api_messages.append({"role": "user", "content": input_text})
     
     try:
-        logger.info(f"🔄 Отправка запроса к OpenAI API с моделью {model}")
+        start_time = datetime.now()
+        logger.info(f"🔄 Отправка запроса к OpenAI API с моделью {model} в {start_time.strftime('%H:%M:%S')}")
         logger.info(f"🧾 Содержимое запроса: {api_messages[-1]['content'][:50]}...")
         logger.info(f"📊 Количество сообщений в истории: {len(api_messages)}")
         if system_instruction:
@@ -68,13 +70,19 @@ async def send_message_to_openai(
                 messages=api_messages,
                 max_tokens=4000
             )
-            logger.info(f"✅ Получен ответ от OpenAI API")
+            end_time = datetime.now()
+            elapsed = (end_time - start_time).total_seconds()
+            logger.info(f"✅ Получен ответ от OpenAI API за {elapsed:.2f} сек.")
         except Exception as api_error:
             logger.error(f"⚠️ Ошибка при выполнении запроса к API: {str(api_error)}")
             raise  # Пробрасываем ошибку дальше для основного блока try/except
         
         # Получим ответ модели
         output_text = response.choices[0].message.content
+
+        # Проверяем, не пустой ли ответ
+        if not output_text.strip():
+            output_text = "[Модель вернула пустой ответ. Попробуйте переформулировать запрос.]"
         
         # Считаем токены
         input_tokens = response.usage.prompt_tokens

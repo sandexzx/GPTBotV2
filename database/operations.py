@@ -186,3 +186,45 @@ def get_admin_stats() -> Dict[str, Any]:
     
     session.close()
     return result
+
+def update_message_tokens(chat_id: int, is_user_message: bool, new_tokens: int, old_tokens: int, model: str) -> None:
+    """Обновить количество токенов в последнем сообщении и пересчитать статистику"""
+    from services.token_counter import calculate_cost
+    session = Session()
+    
+    # Определяем роль сообщения
+    role = "user" if is_user_message else "assistant"
+    
+    # Получаем последнее сообщение пользователя и обновляем его токены
+    last_message = session.query(Message).filter(
+        Message.chat_id == chat_id, 
+        Message.role == role
+    ).order_by(Message.id.desc()).first()
+    
+    if last_message:
+        # Вычисляем разницу между оценкой и реальным количеством
+        tokens_diff = new_tokens - old_tokens
+        cost_diff = calculate_cost(tokens_diff, model, is_user_message)
+        
+        # Обновляем запись сообщения
+        last_message.tokens = new_tokens
+        last_message.cost_usd = calculate_cost(new_tokens, model, is_user_message)
+        
+        # Обновляем статистику чата
+        chat = session.query(Chat).filter(Chat.id == chat_id).one()
+        if is_user_message:
+            chat.tokens_input += tokens_diff
+        else:
+            chat.tokens_output += tokens_diff
+        chat.cost_usd += cost_diff
+        
+        # Обновляем статистику пользователя
+        user = chat.user
+        if is_user_message:
+            user.total_tokens_input += tokens_diff
+        else:
+            user.total_tokens_output += tokens_diff
+        user.total_cost_usd += cost_diff
+        
+        session.commit()
+    session.close()
